@@ -202,3 +202,15 @@ resource "aws_ecs_service" "frontend_svc" {
     }
   
 }
+
+# ~~~~~~~~~~~~~~~~~~~~~~ Output the URLs of the services ~~~~~~~~~~~~~~~~~~~~
+
+output "backend_url" {
+  value = "http://${data.aws_alb.backend_lb.dns_name}:${var.backend_port}"
+  description = "The URL of the backend service."
+}
+
+output "frontend_url" {
+  value = "http://${data.aws_alb.frontend_lb.dns_name}:${var.frontend_port}"
+  description = "The URL of the frontend service."
+}

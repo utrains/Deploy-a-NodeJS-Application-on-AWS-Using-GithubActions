@@ -1,0 +1,270 @@
+name: Deploy a static website on AWS S3 Bucket
+
+on:
+  workflow_dispatch:
+
+# Config the aws credentials and call it here
+env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    AWS_REGION: us-east-2
+
+jobs:
+
+  # Create the infrastructure on AWS with the ressources in the ecr directory
+  Create-the-infrastructure-in-AWS:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0                     
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64
+            
+      - name: terraform init & plan
+        run: |
+            cd ecr
+            terraform init 
+            terraform apply -auto-approve -state=ecr.tfstate
+    
+      - name: Upload the Terraform State file ecr.tfstate
+        uses: actions/upload-artifact@v3
+        with:
+          name: ecr-terraform-state-file
+          path: |
+            cd ecr
+            ecr.tfstate
+            
+      - name: Upload the script to build the frontend and the backend images 
+        uses: actions/upload-artifact@v3
+        with:
+          name: scripts-to-build-the-images
+          path: |
+            cd ecr
+            docker-build-script.sh
+          
+      - name: Upload the script to push the frontend and the backend images
+        uses: actions/upload-artifact@v3
+        with:
+          name: scripts-to-push-the-images
+          path: |
+            cd ecr
+            docker-push-script.sh
+
+# Build backend and frontend images to the ECR repository previously created using the docker-build-script.sh  generated
+  Build-backend-and-frontend-images-to-ECR:
+    runs-on: ubuntu-latest
+    needs: Create-the-infrastructure-in-AWS
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64
+
+      - name: Install Docker
+        uses: docker-practice/actions-setup-docker@v1
+            
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: scripts-to-build-the-images
+
+      - name: Build backend and frontend Docker images
+        run: |
+          cd ecr
+          ./docker-build-script.sh        
+
+# Push backend and frontend images to the ECR repository previously created using the docker-build-script.sh  generated
+  Push-backend-and-frontend-images-to-ECR:
+    runs-on: ubuntu-latest
+    needs: Build-backend-and-frontend-images-to-ECR
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64
+
+      - name: Install Docker
+        uses: docker-practice/actions-setup-docker@v1
+            
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: scripts-to-push-the-images
+
+      - name: Build backend and frontend Docker images
+        run: |
+          cd ecr
+          ./docker-push-script.sh        
+
+      
+  # Initialising the terraform code to Launch the frontend and the backend app
+  Initialising-the-terraform-code-to-Launch-the-frontend-and-the-backend-app:
+    runs-on: ubuntu-latest
+    needs: Push-backend-and-frontend-images-to-ECR
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64    
+
+      - name: Use the tfapply artifact
+        run: |
+          terraform init -input=false
+          terraform plan -out=ecs-apply-plan.tfplan
+      
+      - name: Upload artifact for terraform apply
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-ecs-apply-plan.tfplan-and-terraform-state
+          path: |
+            ecs-apply-plan.tfplan
+            terraform.tfstate
+      
+
+  # Applying the terraform code to Launch the frontend and the backend app
+  Apply-the-terraform-code-to-Launch-the-frontend-and-the-backend-app:
+    runs-on: ubuntu-latest
+    needs: Initialising-the-terraform-code-to-Launch-the-frontend-and-the-backend-app
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64    
+            
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: build-output-ecs-apply-plan.tfplan-and-terraform-state
+
+      - name: Use the ecs-apply-plan.tfplan artifact
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve ecs-apply-plan.tfplan -state=ecs.tfstate 
+      
+      - name: Upload the Terraform State file ecs.tfstate
+        uses: actions/upload-artifact@v3
+        with:
+          name: ecs-terraform-state-file
+          path: ecs.tfstate          
+
+# The wait-for-approval Job - manual approval implement with the environment approval feature
+  wait-for-ecs-destroy-approval:
+    runs-on: ubuntu-latest
+    needs: Apply-the-terraform-code-to-Launch-the-frontend-and-the-backend-app
+    environment:
+      name: destroy-approval # Environment requiring manual approval
+    steps:
+      - name: Wait for Approval
+        run: echo "Waiting for manual approval to destroy resources..."
+
+
+# The destroy Job - Download the Artifact. Here is the terraform.tfstate file generated in the apply step 
+  destroy-ecs:
+    runs-on: ubuntu-latest
+    needs: wait-for-ecs-destroy-approval
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64
+            
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ecs-terraform-state-file
+
+      - name: Use the terraform-state artifact
+        run: |
+          terraform init -input=false
+          terraform refresh
+          terraform destroy -auto-approve
+
+# The wait-for-approval Job - manual approval implement with the environment approval feature
+  wait-for-ecr-approval:
+    runs-on: ubuntu-latest
+    needs: Apply-the-terraform-code-to-Launch-the-frontend-and-the-backend-app
+    environment:
+      name: destroy-approval # Environment requiring manual approval
+    steps:
+      - name: Wait for Approval
+        run: echo "Waiting for manual approval to destroy resources..."
+
+  destroy-ecr:
+    runs-on: ubuntu-latest
+    needs: wait-for-approval
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          
+      - name: Install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+            version: 2                         
+            verbose: false                     
+            arch: amd64
+            
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ecr-terraform-state-file
+
+      - name: Use the terraform-state artifact
+        run: |
+          terraform init -input=false
+          terraform refresh
+          terraform destroy -auto-approve

@@ -42,5 +42,18 @@ pipeline {
                 sh 'terraform apply --auto-approve'
             }
         }
+
+        stage ('Hold Destroy') {
+            steps {
+                input message: 'Do you really want to destroy the infrastructure?'
+            }
+        }
+
+        stage ('Destroy Infrastructure') {
+            steps {
+                sh '''
+                terraform destroy -auto-approve
+                '''
+            }
     }
 }

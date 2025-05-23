@@ -116,21 +116,21 @@ resource "aws_ecr_repository" "repository-backend" {
 
 # ~~~~~~~~~~ Clean Up docker images too when the infrastructure is destoyed ~~~~~~~~~
 
-resource "null_resource" "clean-up-images" {
+# resource "null_resource" "clean-up-images" {
 	
-	  provisioner "local-exec" {
+#	  provisioner "local-exec" {
 
-      when = destroy
-	    command =<<EOF
-		          docker rmi `docker image ls | grep "end-repo" | awk '{print $1}'`
-		          EOF
-        interpreter = [
-           "bash",
-            "-c"
-         ]
-	  }
-	
-}
+#      when = destroy
+#	     command =<<EOF
+#		          docker rmi `docker image ls | grep "end-repo" | awk '{print $1}'`
+#		          EOF
+#       interpreter = [
+#           "bash",
+#           "-c"
+#         ]
+#	  }
+#	
+#}
 
 output "INFO" {
   value = "AWS Resources  has been provisioned. Go to ${aws_ecr_repository.repository-backend.repository_url} and ${aws_ecr_repository.repository-frontend.repository_url}"

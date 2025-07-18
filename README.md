@@ -69,7 +69,7 @@ Before starting this project, you need to have the following:
 2. Navigate to **IAM** > **Identity Providers**.
 3. Click **Add provider**.
 4. Set the **Provider type** to `OIDC`.
-5. Chose **OpenID Connect**.
+5. Choose **OpenID Connect**.
 6. For **Provider URL**, enter:
    ```
    https://token.actions.githubusercontent.com

@@ -69,15 +69,16 @@ Before starting this project, you need to have the following:
 2. Navigate to **IAM** > **Identity Providers**.
 3. Click **Add provider**.
 4. Set the **Provider type** to `OIDC`.
-5. For **Provider URL**, enter:
+5. Chose **OpenID Connect**.
+6. For **Provider URL**, enter:
    ```
    https://token.actions.githubusercontent.com
    ```
-6. For **Audience**, enter:
+7. For **Audience**, enter:
    ```
    sts.amazonaws.com
    ```
-7. Click **Add provider** to save.
+8. Click **Add provider** to save.
 
 ### Step 2: Create an AWS IAM role for Github Actions
 
